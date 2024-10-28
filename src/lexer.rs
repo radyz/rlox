@@ -1,21 +1,21 @@
 use std::fmt::Display;
 
 #[derive(Debug)]
-pub enum ErrorKind {
+pub enum LexerErrorKind {
     UnterminatedString,
     UnexpectedCharacter,
     InvalidNumberFormat,
 }
 
 #[derive(Debug)]
-pub struct ScanError {
-    kind: ErrorKind,
-    start: usize,
-    end: usize,
+pub struct LexerError {
+    pub kind: LexerErrorKind,
+    pub start: usize,
+    pub end: usize,
 }
 
 #[derive(Debug, PartialEq)]
-pub enum TokenKind {
+pub enum TokenKind<'a> {
     // Single-character tokens
     LeftParen,
     RightParen,
@@ -41,8 +41,8 @@ pub enum TokenKind {
 
     // Literals
     Identifier,
-    String,
-    Number(f32),
+    String(&'a str),
+    Number(f64),
 
     // Keywords
     And,
@@ -65,8 +65,9 @@ pub enum TokenKind {
 
 #[derive(Debug)]
 pub struct Token<'a> {
-    kind: TokenKind,
-    lexeme: &'a str,
+    pub kind: TokenKind<'a>,
+    pub lexeme: &'a str,
+    pub position: usize,
 }
 
 impl<'a> Display for Token<'a> {
@@ -94,7 +95,7 @@ impl<'a> Display for Token<'a> {
             TokenKind::Less => write!(f, "LESS {lexeme} null"),
             TokenKind::LessEqual => write!(f, "LESS_EQUAL {lexeme} null"),
             TokenKind::Identifier => write!(f, "IDENTIFIER {lexeme} null"),
-            TokenKind::String => write!(f, "STRING {lexeme} {}", lexeme.trim_matches('"')),
+            TokenKind::String(s) => write!(f, "STRING {lexeme} {}", s),
             TokenKind::Number(literal) => write!(f, "NUMBER {lexeme} {:?}", literal),
             TokenKind::And => write!(f, "AND {lexeme} null"),
             TokenKind::Class => write!(f, "CLASS {lexeme} null"),
@@ -123,13 +124,13 @@ pub struct Lexer<'a> {
 }
 
 impl<'a> Lexer<'a> {
-    fn new(source: &'a str) -> Self {
+    pub fn new(source: &'a str) -> Self {
         Lexer { source, pos: 0 }
     }
 }
 
 impl<'a> Iterator for Lexer<'a> {
-    type Item = Result<Token<'a>, ScanError>;
+    type Item = Result<Token<'a>, LexerError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let mut lexemes = self.source.char_indices().skip(self.pos);
@@ -146,42 +147,52 @@ impl<'a> Iterator for Lexer<'a> {
                 '(' => Some(Ok(Token {
                     kind: TokenKind::LeftParen,
                     lexeme: &self.source[position..position + 1],
+                    position,
                 })),
                 ')' => Some(Ok(Token {
                     kind: TokenKind::RightParen,
                     lexeme: &self.source[position..position + 1],
+                    position,
                 })),
                 '{' => Some(Ok(Token {
                     kind: TokenKind::LeftBrace,
                     lexeme: &self.source[position..position + 1],
+                    position,
                 })),
                 '}' => Some(Ok(Token {
                     kind: TokenKind::RightBrace,
                     lexeme: &self.source[position..position + 1],
+                    position,
                 })),
                 ',' => Some(Ok(Token {
                     kind: TokenKind::Comma,
                     lexeme: &self.source[position..position + 1],
+                    position,
                 })),
                 '.' => Some(Ok(Token {
                     kind: TokenKind::Dot,
                     lexeme: &self.source[position..position + 1],
+                    position,
                 })),
                 '-' => Some(Ok(Token {
                     kind: TokenKind::Minus,
                     lexeme: &self.source[position..position + 1],
+                    position,
                 })),
                 '+' => Some(Ok(Token {
                     kind: TokenKind::Plus,
                     lexeme: &self.source[position..position + 1],
+                    position,
                 })),
                 ';' => Some(Ok(Token {
                     kind: TokenKind::Semicolon,
                     lexeme: &self.source[position..position + 1],
+                    position,
                 })),
                 '*' => Some(Ok(Token {
                     kind: TokenKind::Star,
                     lexeme: &self.source[position..position + 1],
+                    position,
                 })),
                 '/' => match lexemes.next() {
                     Some((_, '/')) => {
@@ -196,46 +207,55 @@ impl<'a> Iterator for Lexer<'a> {
                     _ => Some(Ok(Token {
                         kind: TokenKind::Slash,
                         lexeme: &self.source[position..position + 1],
+                        position,
                     })),
                 },
                 '!' => match lexemes.next() {
                     Some((_, '=')) => Some(Ok(Token {
                         kind: TokenKind::BangEqual,
                         lexeme: &self.source[position..position + 2],
+                        position,
                     })),
                     _ => Some(Ok(Token {
                         kind: TokenKind::Bang,
                         lexeme: &self.source[position..position + 1],
+                        position,
                     })),
                 },
                 '=' => match lexemes.next() {
                     Some((_, '=')) => Some(Ok(Token {
                         kind: TokenKind::EqualEqual,
                         lexeme: &self.source[position..position + 2],
+                        position,
                     })),
                     _ => Some(Ok(Token {
                         kind: TokenKind::Equal,
                         lexeme: &self.source[position..position + 1],
+                        position,
                     })),
                 },
                 '>' => match lexemes.next() {
                     Some((_, '=')) => Some(Ok(Token {
                         kind: TokenKind::GreaterEqual,
                         lexeme: &self.source[position..position + 2],
+                        position,
                     })),
                     _ => Some(Ok(Token {
                         kind: TokenKind::Greater,
                         lexeme: &self.source[position..position + 1],
+                        position,
                     })),
                 },
                 '<' => match lexemes.next() {
                     Some((_, '=')) => Some(Ok(Token {
                         kind: TokenKind::LessEqual,
                         lexeme: &self.source[position..position + 2],
+                        position,
                     })),
                     _ => Some(Ok(Token {
                         kind: TokenKind::Less,
                         lexeme: &self.source[position..position + 1],
+                        position,
                     })),
                 },
                 // P2 - Resolve literals.
@@ -243,16 +263,19 @@ impl<'a> Iterator for Lexer<'a> {
                     match lexemes.next() {
                         Some((next_position, c)) => match c {
                             '"' => {
+                                let lexeme = &self.source[position..next_position + 1];
+
                                 break Some(Ok(Token {
-                                    kind: TokenKind::String,
-                                    lexeme: &self.source[position..next_position + 1],
+                                    kind: TokenKind::String(lexeme.trim_matches('"')),
+                                    lexeme,
+                                    position,
                                 }));
                             }
                             _ => continue,
                         },
                         _ => {
-                            break Some(Err(ScanError {
-                                kind: ErrorKind::UnterminatedString,
+                            break Some(Err(LexerError {
+                                kind: LexerErrorKind::UnterminatedString,
                                 start: position,
                                 end: self.source.len(),
                             }));
@@ -278,13 +301,14 @@ impl<'a> Iterator for Lexer<'a> {
 
                     let lexeme = &self.source[position..next_position].trim_matches('.');
 
-                    match lexeme.trim().parse::<f32>() {
+                    match lexeme.trim().parse::<f64>() {
                         Ok(n) => Some(Ok(Token {
                             kind: TokenKind::Number(n),
                             lexeme,
+                            position,
                         })),
-                        Err(_) => Some(Err(ScanError {
-                            kind: ErrorKind::InvalidNumberFormat,
+                        Err(_) => Some(Err(LexerError {
+                            kind: LexerErrorKind::InvalidNumberFormat,
                             start: position,
                             end: next_position,
                         })),
@@ -307,75 +331,92 @@ impl<'a> Iterator for Lexer<'a> {
                         "and" => Some(Ok(Token {
                             kind: TokenKind::And,
                             lexeme,
+                            position,
                         })),
                         "class" => Some(Ok(Token {
                             kind: TokenKind::Class,
                             lexeme,
+                            position,
                         })),
                         "else" => Some(Ok(Token {
                             kind: TokenKind::Else,
                             lexeme,
+                            position,
                         })),
                         "false" => Some(Ok(Token {
                             kind: TokenKind::False,
                             lexeme,
+                            position,
                         })),
                         "fun" => Some(Ok(Token {
                             kind: TokenKind::Fun,
                             lexeme,
+                            position,
                         })),
                         "for" => Some(Ok(Token {
                             kind: TokenKind::For,
                             lexeme,
+                            position,
                         })),
                         "if" => Some(Ok(Token {
                             kind: TokenKind::If,
                             lexeme,
+                            position,
                         })),
                         "nil" => Some(Ok(Token {
                             kind: TokenKind::Nil,
                             lexeme,
+                            position,
                         })),
                         "or" => Some(Ok(Token {
                             kind: TokenKind::Or,
                             lexeme,
+                            position,
                         })),
                         "print" => Some(Ok(Token {
                             kind: TokenKind::Print,
                             lexeme,
+                            position,
                         })),
                         "return" => Some(Ok(Token {
                             kind: TokenKind::Return,
                             lexeme,
+                            position,
                         })),
                         "super" => Some(Ok(Token {
                             kind: TokenKind::Super,
                             lexeme,
+                            position,
                         })),
                         "this" => Some(Ok(Token {
                             kind: TokenKind::This,
                             lexeme,
+                            position,
                         })),
                         "true" => Some(Ok(Token {
                             kind: TokenKind::True,
                             lexeme,
+                            position,
                         })),
                         "var" => Some(Ok(Token {
                             kind: TokenKind::Var,
                             lexeme,
+                            position,
                         })),
                         "while" => Some(Ok(Token {
                             kind: TokenKind::While,
                             lexeme,
+                            position,
                         })),
                         _ => Some(Ok(Token {
                             kind: TokenKind::Identifier,
                             lexeme,
+                            position,
                         })),
                     }
                 }
-                _ => Some(Err(ScanError {
-                    kind: ErrorKind::UnexpectedCharacter,
+                _ => Some(Err(LexerError {
+                    kind: LexerErrorKind::UnexpectedCharacter,
                     start: position,
                     end: position + 1,
                 })),
@@ -395,7 +436,7 @@ impl<'a> Iterator for Lexer<'a> {
 }
 
 #[cfg(test)]
-mod lexer_test {
+mod lexer_tests {
     use super::*;
 
     #[test]
